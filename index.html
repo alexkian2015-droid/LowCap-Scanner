@@ -88,7 +88,7 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
   </header>
 
   <details class="rules" id="rulesBox" open>
-    <summary>Sicherheitsregeln (Solana, via RugCheck)</summary>
+    <summary>Regeln gegen Scam und ausgelutschte Charts</summary>
     <div class="grid">
       <div class="f"><label for="holdersMin">Min. Halter</label><input id="holdersMin" type="number" inputmode="numeric" value="25"></div>
       <div class="f"><label for="top10Max">Top-10-Halter max %</label><input id="top10Max" type="number" inputmode="numeric" value="30"></div>
@@ -96,12 +96,15 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
       <div class="f"><label for="insiderMax">Insider max %</label><input id="insiderMax" type="number" inputmode="numeric" value="10"></div>
       <div class="f"><label for="lpMin">LP gelockt/burned min %</label><input id="lpMin" type="number" inputmode="numeric" value="80"></div>
       <div class="f"><label for="liqRatio">Liquidität/MCap min %</label><input id="liqRatio" type="number" inputmode="numeric" value="8"></div>
+      <div class="f"><label for="athMax">Max. unter dem Hoch %</label><input id="athMax" type="number" inputmode="numeric" value="50"></div>
+      <div class="f"><label for="turnMax">Umsatz 24h max × MCap</label><input id="turnMax" type="number" inputmode="numeric" value="15"></div>
     </div>
     <div class="grid">
       <div class="f chk"><input type="checkbox" id="needAuth" checked><label for="needAuth">Mint &amp; Freeze abgegeben</label></div>
       <div class="f chk"><input type="checkbox" id="noDanger" checked><label for="noDanger">Keine „Danger“-Warnungen</label></div>
       <div class="f chk"><input type="checkbox" id="needSocials" checked><label for="needSocials">Mind. ein Social/Website</label></div>
       <div class="f chk"><input type="checkbox" id="noDump" checked><label for="noDump">Kein Abverkauf (Sells ≫ Buys)</label></div>
+      <div class="f chk"><input type="checkbox" id="volAlive" checked><label for="volAlive">Volumen noch aktiv</label></div>
       <div class="f chk"><input type="checkbox" id="onlyChecked" checked><label for="onlyChecked">Nur fertig geprüfte zeigen</label></div>
     </div>
   </details>
@@ -117,6 +120,7 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
       <div class="f"><label for="sort">Sortieren</label>
         <select id="sort">
           <option value="newest">Neueste zuerst</option>
+          <option value="nearAth">Nah am Hoch</option>
           <option value="holders">Meiste Halter</option>
           <option value="vol1h">Volumen 1h</option>
           <option value="ch1h">Anstieg 1h</option>
@@ -137,21 +141,24 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
   <div class="list" id="list"><div class="empty">Lade frische Token …</div></div>
   <div class="rejects" id="rejects"></div>
 
-  <p class="note">Daten: DexScreener (Markt) und RugCheck (Halter, Authorities, LP-Lock, Insider). Nur Solana. „CA kopieren“ kopiert die Contract-Adresse – in Fomo über die Suche einfügen. Die Regeln filtern offensichtlichen Müll heraus, garantieren aber nichts: Rugs, Bundles und Dev-Dumps gibt es auch bei Token, die alle Checks bestehen. Kein Finanzrat.</p>
+  <p class="note">Daten: DexScreener (Markt), GeckoTerminal (Kursverlauf/Hoch) und RugCheck (Halter, Authorities, LP-Lock, Insider). Nur Solana. „CA kopieren“ kopiert die Contract-Adresse – in Fomo über die Suche einfügen. Die Regeln filtern offensichtlichen Müll heraus, garantieren aber nichts: Rugs, Bundles und Dev-Dumps gibt es auch bei Token, die alle Checks bestehen. Kein Finanzrat.</p>
 </div>
 
 <script>
 const DEX = "https://api.dexscreener.com";
 const RUG = "https://api.rugcheck.xyz/v1/tokens/";
+const GT = "https://api.geckoterminal.com/api/v2/networks/solana/pools/";
 const SOURCES = ["/token-profiles/latest/v1", "/token-boosts/latest/v1", "/token-boosts/top/v1", "/community-takeovers/latest/v1"];
 const CHAIN = "solana";
 const seen = new Map();    // mint -> best pair (DexScreener)
 const checks = new Map();  // mint -> {state:'pending'|'ok'|'err', ts, info}
+const charts = new Map();  // pair -> {state, ts, info:{dd, peakMc}}  (Kursverlauf von GeckoTerminal)
+let chartQueue = [], chartBusy = false;
 let timer = null, busy = false, rugQueue = [], rugActive = 0, rugBlocked = false;
 
 const $ = id => document.getElementById(id);
-const PREF_KEY = "lowcap-scanner-v2";
-const PREF_IDS = ["holdersMin","top10Max","topOneMax","insiderMax","lpMin","liqRatio","needAuth","noDanger","needSocials","noDump","onlyChecked","mcMin","mcMax","liqMin","ageMin","ageMax","volMin","sort"];
+const PREF_KEY = "lowcap-scanner-v3";
+const PREF_IDS = ["athMax","turnMax","volAlive","holdersMin","top10Max","topOneMax","insiderMax","lpMin","liqRatio","needAuth","noDanger","needSocials","noDump","onlyChecked","mcMin","mcMax","liqMin","ageMin","ageMax","volMin","sort"];
 function loadPrefs(){ try{ const p = JSON.parse(localStorage.getItem(PREF_KEY)||"{}"); for(const k of PREF_IDS){ if(!(k in p)) continue; const el=$(k); if(el.type==="checkbox") el.checked=p[k]; else el.value=p[k]; } }catch(e){} }
 function savePrefs(){ try{ const p={}; for(const k of PREF_IDS){ const el=$(k); p[k]= el.type==="checkbox"?el.checked:el.value; } localStorage.setItem(PREF_KEY, JSON.stringify(p)); }catch(e){} }
 
@@ -213,6 +220,34 @@ function pump(){
       .finally(() => { rugActive--; setTimeout(pump, 350); scheduleRender(); });
   }
 }
+/* ---------- 2b) Kursverlauf: wie weit ist der Coin schon vom Hoch gefallen? ---------- */
+function queueChart(p){
+  const k = p.pairAddress; if(!k) return;
+  const c = charts.get(k), age = c ? Date.now() - c.ts : 0;
+  if(c && (c.state === "pending" || (c.state === "ok" && age < 3*60*1000) || (c.state === "err" && age < 5*60*1000))) return;
+  if(chartQueue.some(x => x.pairAddress === k)) return;
+  if(!c || c.state === "err") charts.set(k, {state:"pending", ts:Date.now()});
+  chartQueue.push(p); pumpChart();
+}
+function pumpChart(){
+  if(chartBusy || !chartQueue.length) return;
+  chartBusy = true;
+  const p = chartQueue.shift(), k = p.pairAddress;
+  const ageH = p.pairCreatedAt ? (Date.now() - p.pairCreatedAt)/3.6e6 : 48;
+  const path = ageH <= 24 ? "minute?aggregate=5&limit=300" : "hour?aggregate=1&limit=300";
+  getJSON(`${GT}${k}/ohlcv/${path}&currency=usd`)
+    .then(j => {
+      const rows = (j?.data?.attributes?.ohlcv_list || []).filter(r => Number(r[4]) > 0).sort((a,b) => a[0]-b[0]);
+      if(rows.length < 3) throw new Error("zu wenig Kerzen");
+      const last = Number(rows[rows.length-1][4]);
+      const peak = Math.max(...rows.map(r => Number(r[4])));   // höchster Schlusskurs (ignoriert einzelne Sniper-Dochte)
+      const mc = num(p.marketCap || p.fdv);
+      charts.set(k, {state:"ok", ts:Date.now(), info:{dd: Math.max(0, 1 - last/peak), peakMc: mc * peak/last}});
+    })
+    .catch(err => charts.set(k, {state:"err", ts:Date.now(), err: err.message}))
+    .finally(() => { chartBusy = false; setTimeout(pumpChart, 2100); scheduleRender(); });
+}
+
 let renderPending = false;
 function scheduleRender(){ if(renderPending) return; renderPending = true; setTimeout(()=>{ renderPending=false; render(); }, 400); }
 
@@ -256,6 +291,12 @@ function marketReasons(p){
   const b = num(p.txns?.h1?.buys), s = num(p.txns?.h1?.sells);
   if($("noDump").checked && s > 20 && s > b*1.6) out.push("Abverkauf");
   if($("noDump").checked && num(p.priceChange?.h1) < -40) out.push("−40 % in 1h");
+  const turnMax = num($("turnMax").value);
+  if(turnMax && mc && num(p.volume?.h24)/mc > turnMax) out.push("Umsatz viel zu hoch für die MCap (Pump & Dump)");
+  if($("volAlive").checked && p.pairCreatedAt && now - p.pairCreatedAt > 2*3.6e6){
+    const avgH = num(p.volume?.h6)/6;
+    if(avgH > 0 && num(p.volume?.h1) < avgH*0.25) out.push("Volumen eingeschlafen");
+  }
   return out;
 }
 function safetyReasons(i){
@@ -287,19 +328,24 @@ function render(){
   for(const p of all){
     const mr = marketReasons(p);
     if(mr.length){ bump(mr[0]); continue; }
+    queueChart(p);
+    const ch = charts.get(p.pairAddress);
+    if(ch?.state === "ok" && ch.info.dd*100 > num($("athMax").value)){ bump("schon gedumpt (weit unter dem Hoch)"); continue; }
+    const chartWait = !ch || ch.state === "pending";
     const mint = p.baseToken.address;
     queueCheck(mint);
     const c = checks.get(mint);
-    if(!c || c.state === "pending"){ pending++; if(!$("onlyChecked").checked) passed.push({p, c:null}); continue; }
-    if(c.state === "err"){ if(!$("onlyChecked").checked) passed.push({p, c}); else bump("Sicherheitscheck fehlgeschlagen"); continue; }
+    if(chartWait || !c || c.state === "pending"){ pending++; if(!$("onlyChecked").checked) passed.push({p, c:(c && c.state !== "pending") ? c : null, ch}); continue; }
+    if(c.state === "err"){ if(!$("onlyChecked").checked) passed.push({p, c, ch}); else bump("Sicherheitscheck fehlgeschlagen"); continue; }
     const sr = safetyReasons(c.info);
     if(sr.length){ bump(sr[0].replace(/\d+(\.\d+)?/g,"#")); continue; }
-    passed.push({p, c});
+    passed.push({p, c, ch});
   }
 
   const ratio = p => (num(p.txns?.h1?.buys)+1)/(num(p.txns?.h1?.sells)+1);
   const S = {
     newest:(a,b)=>num(b.p.pairCreatedAt)-num(a.p.pairCreatedAt),
+    nearAth:(a,b)=>(a.ch?.info?.dd ?? 1)-(b.ch?.info?.dd ?? 1),
     holders:(a,b)=>num(b.c?.info?.holders)-num(a.c?.info?.holders),
     vol1h:(a,b)=>num(b.p.volume?.h1)-num(a.p.volume?.h1),
     ch1h:(a,b)=>num(b.p.priceChange?.h1)-num(a.p.priceChange?.h1),
@@ -315,7 +361,7 @@ function render(){
   } else if(!passed.length){
     $("list").innerHTML = `<div class="empty">${all.length ? (pending ? "Sicherheitscheck läuft …" : "Gerade besteht kein Token alle Regeln. Das ist bei strengen Regeln normal – der nächste Scan läuft automatisch.") : "Lade frische Token …"}</div>`;
   } else {
-    $("list").innerHTML = passed.slice(0,60).map(({p,c}) => {
+    $("list").innerHTML = passed.slice(0,60).map(({p,c,ch}) => {
       const a = p.baseToken.address, sym = p.baseToken.symbol||"?", name = p.baseToken.name||"";
       const i = c?.info;
       const img = p.info?.imageUrl ? `<img src="${esc(p.info.imageUrl)}" alt="" loading="lazy" onerror="this.remove()">` : "";
@@ -329,6 +375,9 @@ function render(){
         if(i.lp >= 99) chips.push(["LP burned/gelockt","good"]);
         i.risks.filter(r=>r.level==="warn").slice(0,3).forEach(r=>chips.push([r.name,""]));
       }
+      if(ch?.state === "ok"){ const d = ch.info.dd*100; chips.unshift([`Hoch ${fmtUsd(ch.info.peakMc)} · ${d < 2 ? "gerade am Hoch" : "−" + d.toFixed(0) + " %"}`, d < 25 ? "good" : ""]); }
+      else if(ch?.state === "err") chips.push(["Chart nicht geprüft",""]);
+      else chips.push(["Chart wird geprüft",""]);
       if(p.boosts?.active) chips.push(["bezahlter Boost",""]);
       return `<article class="row">
         <div class="logo">${img || esc(sym.slice(0,2))}</div>
