@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Comeback Scanner</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Comeback">
+<meta name="theme-color" content="#0b7a63">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: regeln oben (aufklappbar), fortschrittsleiste, dann trefferliste sortiert nach comeback-score */
+:root{
+  --bg:#f2f5f4; --panel:#ffffff; --line:#d8e0dd; --fg:#14201c; --muted:#5c6d67;
+  --accent:#0b7a63; --accent-soft:#dcf1ea;
+  --up:#0f8a5f; --down:#c9364a; --warn:#a8650c; --warn-soft:#fbefdc; --bad-soft:#fbe3e7; --good-soft:#dcf3ea;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --body:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0c1210; --panel:#141c19; --line:#25312d; --fg:#e7efec; --muted:#8fa29b;
+  --accent:#3fd0a8; --accent-soft:#143229;
+  --up:#3ed19a; --down:#ff6b7f; --warn:#f2a649; --warn-soft:#33270f; --bad-soft:#3a1820; --good-soft:#12301f;
+  color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:15px/1.45 var(--body);padding-inline:16px;padding-block:0 48px}
+.wrap{max-width:1040px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 16px;padding-block:20px 6px}
+h1{font:800 clamp(26px,5vw,38px)/1 var(--display);margin:0;letter-spacing:-.02em}
+h1 span{color:var(--accent)}
+.lead{color:var(--muted);margin:6px 0 14px;max-width:68ch}
+.status{font:500 13px var(--mono);color:var(--muted);display:flex;align-items:center;gap:8px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.dot.live{background:var(--up)} .dot.err{background:var(--down)} .dot.busy{background:var(--warn)}
+details.rules{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:12px}
+details.rules summary{cursor:pointer;font:700 15px var(--display)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 10px;margin-top:10px}
+.f label{display:block;font:600 11px var(--body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:3px}
+.f input[type=number],.f select{width:100%;font:500 14px var(--mono);padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.f.chk{display:flex;align-items:center;gap:8px}
+.f.chk label{margin:0;text-transform:none;letter-spacing:0;font:500 13.5px var(--body);color:var(--fg)}
+input:focus,select:focus,button:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;padding-block:10px;color:var(--muted);font-size:13px}
+.progress{flex:1 1 260px;display:grid;gap:5px}
+.track{height:5px;background:var(--line);border-radius:3px;overflow:hidden}
+.track i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
+button{font:600 13px var(--body);border:1px solid var(--line);background:var(--panel);color:var(--fg);border-radius:8px;padding:7px 12px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.list{display:grid;gap:10px}
+.row{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:grid;
+  grid-template-columns:64px 44px minmax(0,1.3fr) repeat(4,minmax(0,1fr)) auto;gap:8px 14px;align-items:center}
+.score{width:64px;height:64px;border-radius:12px;display:grid;place-items:center;align-content:center;background:var(--accent-soft);color:var(--accent)}
+.score b{font:800 24px/1 var(--display)}
+.score small{font:600 9.5px var(--body);letter-spacing:.06em;text-transform:uppercase}
+.score.mid{background:var(--warn-soft);color:var(--warn)}
+.logo{width:44px;height:44px;border-radius:10px;background:var(--accent-soft);display:grid;place-items:center;font:800 15px var(--display);color:var(--accent);overflow:hidden}
+.logo img{width:100%;height:100%;object-fit:cover}
+.name{min-width:0}
+.name b{font:700 16px var(--display);display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.name small{color:var(--muted);font-size:12.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m{min-width:0}
+.m .k{font:600 10.5px var(--body);text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.m .v{font:500 14px var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.up{color:var(--up)} .down{color:var(--down)}
+.acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.acts a,.acts button{font:600 12.5px var(--body);text-decoration:none;padding:6px 10px;border-radius:7px;border:1px solid var(--line);color:var(--fg);background:transparent}
+.acts .copy{background:var(--accent);border-color:var(--accent);color:#fff}
+.parts{grid-column:3 / -1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px 10px}
+.part{display:grid;gap:3px;font-size:11.5px;color:var(--muted)}
+.part .pb{height:4px;background:var(--line);border-radius:2px;overflow:hidden}
+.part .pb i{display:block;height:100%;background:var(--accent)}
+.chips{grid-column:3 / -1;display:flex;flex-wrap:wrap;gap:5px}
+.chip{font:600 11.5px var(--body);padding:2px 8px;border-radius:999px;background:var(--warn-soft);color:var(--warn)}
+.chip.bad{background:var(--bad-soft);color:var(--down)}
+.chip.good{background:var(--good-soft);color:var(--up)}
+.empty{padding:36px 16px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:12px}
+.rejects{margin-top:14px;font-size:13px;color:var(--muted)}
+.rejects ul{margin:6px 0 0;padding-left:18px}
+.note{margin-top:22px;font-size:12.5px;color:var(--muted);max-width:72ch}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font:600 13px var(--body)}
+@media (max-width:860px){
+  .row{grid-template-columns:56px 40px minmax(0,1fr) minmax(0,1fr)}
+  .score{width:56px;height:56px}
+  .name{grid-column:3 / -1}
+  .m{grid-column:span 2}
+  .parts{grid-column:1 / -1;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .acts,.chips{grid-column:1 / -1;justify-content:flex-start}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Comeback <span>Scanner</span></h1>
+    <div class="status"><span class="dot" id="dot"></span><span id="status">startet …</span></div>
+  </header>
+  <p class="lead">Sucht Solana-Memes, die 90–99 % vom Hoch gefallen sind, aber noch leben: viele Halter, Wale noch drin, Volumen wacht auf, Kurs hat einen Boden gebildet, Community aktiv. Jeder Treffer bekommt einen Score bis 100.</p>
+
+  <details class="rules" id="rules">
+    <summary>Regeln</summary>
+    <div class="grid">
+      <div class="f"><label for="ddMin">Gefallen vom Hoch min %</label><input id="ddMin" type="number" value="90"></div>
+      <div class="f"><label for="ddMax">Gefallen vom Hoch max %</label><input id="ddMax" type="number" value="99"></div>
+      <div class="f"><label for="ageMin">Mindestalter (Tage)</label><input id="ageMin" type="number" step="0.5" value="2"></div>
+      <div class="f"><label for="holdersMin">Min. Halter</label><input id="holdersMin" type="number" value="300"></div>
+      <div class="f"><label for="top10Max">Top 10 max %</label><input id="top10Max" type="number" value="60"></div>
+      <div class="f"><label for="liqMin">Liquidität min $</label><input id="liqMin" type="number" value="3000"></div>
+      <div class="f"><label for="mcMin">MCap min $</label><input id="mcMin" type="number" value="5000"></div>
+      <div class="f"><label for="mcMax">MCap max $</label><input id="mcMax" type="number" value="1000000"></div>
+      <div class="f"><label for="scoreMin">Score min</label><input id="scoreMin" type="number" value="45"></div>
+    </div>
+    <div class="grid">
+      <div class="f chk"><input type="checkbox" id="needAuth" checked><label for="needAuth">Mint &amp; Freeze abgegeben</label></div>
+      <div class="f chk"><input type="checkbox" id="needWake" checked><label for="needWake">Nur wenn Volumen aufwacht</label></div>
+      <div class="f chk"><input type="checkbox" id="onlyDone" checked><label for="onlyDone">Nur fertig geprüfte</label></div>
+    </div>
+  </details>
+
+  <div class="bar">
+    <div class="progress"><span id="prog">–</span><div class="track"><i id="track"></i></div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <select id="sort" aria-label="Sortieren" style="font:600 13px var(--body);padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--fg)">
+        <option value="score">Höchster Score</option>
+        <option value="wake">Stärkstes Volumen-Comeback</option>
+        <option value="holders">Meiste Halter</option>
+        <option value="dd">Am tiefsten gefallen</option>
+      </select>
+      <button class="primary" id="refresh" type="button">Neu scannen</button>
+    </div>
+  </div>
+
+  <div class="list" id="list"><div class="empty">Sammle Kandidaten …</div></div>
+  <div class="rejects" id="rejects"></div>
+
+  <p class="note">Daten: DexScreener (Markt, Community-Takeovers, Boosts), GeckoTerminal (Kursverlauf, Halter, Socials) und RugCheck (Sicherheit, große Wallets). X-Beiträge werden nicht automatisch gezählt – dafür gibt es pro Coin den Button „X live“. Ein toter Coin bleibt meistens tot; der Score zeigt nur, wo noch Leben drin ist. Kein Finanzrat.</p>
+</div>
+
+<script>
+const DEX = "https://api.dexscreener.com", GT = "https://api.geckoterminal.com/api/v2/networks/solana/", RUG = "https://api.rugcheck.xyz/v1/tokens/";
+const $ = id => document.getElementById(id);
+const num = v => Number(v) || 0;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtUsd = v => { v = num(v); if(v >= 1e6) return "$" + (v/1e6).toFixed(2) + "M"; if(v >= 1e3) return "$" + (v/1e3).toFixed(1) + "k"; return "$" + v.toFixed(0); };
+const fmtN = v => new Intl.NumberFormat("de-DE").format(Math.round(num(v)));
+const fmtAge = ms => { const h = ms/3.6e6; return h < 48 ? Math.round(h) + " Std." : Math.round(h/24) + " Tage"; };
+
+/* ---------- Einstellungen merken ---------- */
+const PREF_KEY = "comeback-scanner-v1";
+const PREF_IDS = ["ddMin","ddMax","ageMin","holdersMin","top10Max","liqMin","mcMin","mcMax","scoreMin","needAuth","needWake","onlyDone","sort"];
+function loadPrefs(){ try{ const p = JSON.parse(localStorage.getItem(PREF_KEY) || "{}"); for(const k of PREF_IDS){ if(!(k in p)) continue; const el = $(k); if(el.type === "checkbox") el.checked = p[k]; else el.value = p[k]; } }catch(e){} }
+function savePrefs(){ try{ const p = {}; for(const k of PREF_IDS){ const el = $(k); p[k] = el.type === "checkbox" ? el.checked : el.value; } localStorage.setItem(PREF_KEY, JSON.stringify(p)); }catch(e){} }
+
+/* ---------- Netzwerk ---------- */
+async function getJSON(url){
+  const r = await fetch(url, {headers:{accept:"application/json"}});
+  if(!r.ok){ const e = new Error("HTTP " + r.status); e.status = r.status; throw e; }
+  return r.json();
+}
+// GeckoTerminal erlaubt ~30 Abrufe pro Minute: alles läuft durch eine Warteschlange mit Abstand
+const gtQueue = []; let gtBusy = false;
+function gtFetch(path, priority){
+  return new Promise((resolve, reject) => {
+    const job = {path, resolve, reject};
+    priority ? gtQueue.unshift(job) : gtQueue.push(job);
+    gtPump();
+  });
+}
+function gtPump(){
+  if(gtBusy || !gtQueue.length) return;
+  gtBusy = true;
+  const job = gtQueue.shift();
+  let wait = 2200;
+  getJSON(GT + job.path)
+    .then(job.resolve, err => {
+      if(err.status === 429 && !job.retried){ job.retried = true; gtQueue.unshift(job); wait = 15000; }  // zu schnell: kurz Pause, dann nochmal
+      else job.reject(err);
+    })
+    .finally(() => setTimeout(() => { gtBusy = false; gtPump(); }, wait));
+}
+
+/* ---------- Zustand ---------- */
+const T = new Map(); // mint -> {mint, pair, sources:Set, ohlc, info, rug}
+const ctoSet = new Set(), promoSet = new Set();
+let scanning = false, lastScan = 0;
+const tok = m => { if(!T.has(m)) T.set(m, {mint:m, sources:new Set()}); return T.get(m); };
+
+/* ---------- 1) Kandidaten sammeln ---------- */
+async function collect(){
+  const found = new Set();
+  // DexScreener: Community-Takeovers (tote Coins, die eine Community übernommen hat), Profile, Boosts
+  const dexLists = [["/community-takeovers/latest/v1","cto"],["/token-profiles/latest/v1","promo"],["/token-boosts/latest/v1","promo"],["/token-boosts/top/v1","promo"]];
+  const dl = await Promise.allSettled(dexLists.map(([p]) => getJSON(DEX + p)));
+  dl.forEach((r, i) => {
+    if(r.status !== "fulfilled") return;
+    const arr = Array.isArray(r.value) ? r.value : (r.value?.data || []);
+    for(const t of arr){ if(t?.chainId !== "solana" || !t.tokenAddress) continue; found.add(t.tokenAddress); (dexLists[i][1] === "cto" ? ctoSet : promoSet).add(t.tokenAddress); tok(t.tokenAddress).sources.add(dexLists[i][1]); }
+  });
+  // GeckoTerminal: Pools mit dem meisten Handel / Trend – dort tauchen aufwachende Coins zuerst auf
+  const gtLists = ["trending_pools?page=1&duration=24h","trending_pools?page=2&duration=24h","trending_pools?page=1&duration=6h",
+                   "pools?page=1&sort=h24_tx_count_desc","pools?page=2&sort=h24_tx_count_desc","pools?page=1&sort=h24_volume_usd_desc"];
+  const gl = await Promise.allSettled(gtLists.map(p => gtFetch(p, true)));
+  let gtOk = 0;
+  for(const r of gl){
+    if(r.status !== "fulfilled") continue; gtOk++;
+    for(const pool of (r.value?.data || [])){
+      const id = pool?.relationships?.base_token?.data?.id || "";
+      const mint = id.startsWith("solana_") ? id.slice(7) : null;
+      if(!mint || mint === "So11111111111111111111111111111111111111112") continue;
+      found.add(mint); tok(mint).sources.add("trend");
+    }
+  }
+  if(!found.size && !T.size) throw new Error("Keine Datenquelle erreichbar");
+  // Marktdaten für alle Kandidaten in 30er-Paketen von DexScreener
+  const all = [...new Set([...found, ...T.keys()])];
+  const chunks = []; for(let i = 0; i < all.length; i += 30) chunks.push(all.slice(i, i+30));
+  const res = await Promise.allSettled(chunks.map(c => getJSON(`${DEX}/tokens/v1/solana/${c.join(",")}`)));
+  for(const r of res){
+    if(r.status !== "fulfilled" || !Array.isArray(r.value)) continue;
+    for(const p of r.value){
+      const m = p.baseToken?.address; if(!m || !T.has(m)) continue;
+      const t = T.get(m);
+      if(!t.pair || t.pair.pairAddress === p.pairAddress || num(p.liquidity?.usd) > num(t.pair.liquidity?.usd)) t.pair = p;
+    }
+  }
+  return {found: found.size, gtOk};
+}
+
+/* ---------- 2) Kursverlauf: Hoch, Absturz, Boden, Volumen ---------- */
+function parseOhlc(rows, mcNow){
+  rows = rows.filter(r => num(r[4]) > 0).sort((a,b) => a[0]-b[0]);
+  if(rows.length < 12) throw new Error("zu wenig Kursdaten");
+  const close = rows.map(r => num(r[4])), vol = rows.map(r => num(r[5]));
+  let athI = 0; close.forEach((c,i) => { if(c > close[athI]) athI = i; });
+  const ath = close[athI], last = close[close.length-1];
+  const after = close.slice(athI); const low = Math.min(...after);
+  const n = rows.length, recent = 6; // 6 Kerzen à 4 Std. = 24 Std.
+  const vol24 = vol.slice(-recent).reduce((s,v) => s+v, 0);
+  const prior = vol.slice(Math.max(athI+1, n-recent-42), n-recent);
+  const priorDays = Math.max(prior.length/6, 1);
+  const avgDay = prior.reduce((s,v) => s+v, 0) / priorDays;
+  const minRecent = Math.min(...close.slice(-recent));
+  const before = close.slice(Math.max(athI, n-recent-18), n-recent);
+  const minBefore = before.length ? Math.min(...before) : minRecent;
+  return {
+    dd: 1 - last/ath, peakMc: mcNow * ath/last, bounce: last/low,
+    wake: avgDay > 0 ? vol24/avgDay : (vol24 > 0 ? 9 : 0), vol24, avgDay,
+    higherLow: minRecent > minBefore * 1.05,
+    athAgoH: (rows[n-1][0] - rows[athI][0]) / 3600
+  };
+}
+function queueOhlc(t){
+  if(t.ohlc && (t.ohlc.state === "pending" || Date.now() - t.ohlc.ts < 20*60*1000)) return;
+  t.ohlc = {state:"pending", ts:Date.now()};
+  gtFetch(`pools/${t.pair.pairAddress}/ohlcv/hour?aggregate=4&limit=1000&currency=usd`)
+    .then(j => { t.ohlc = {state:"ok", ts:Date.now(), d: parseOhlc(j?.data?.attributes?.ohlcv_list || [], num(t.pair.marketCap || t.pair.fdv))}; })
+    .catch(e => { t.ohlc = {state:"err", ts:Date.now(), err:e.message}; })
+    .finally(scheduleRender);
+}
+
+/* ---------- 3) Halter & Socials (GeckoTerminal) und Sicherheit (RugCheck) ---------- */
+function queueInfo(t){
+  if(t.info && (t.info.state === "pending" || Date.now() - t.info.ts < 30*60*1000)) return;
+  t.info = {state:"pending", ts:Date.now()};
+  gtFetch(`tokens/${t.mint}/info`)
+    .then(j => {
+      const a = j?.data?.attributes || {};
+      const dist = a.holders?.distribution_percentage || {};
+      t.info = {state:"ok", ts:Date.now(), d:{
+        holders: a.holders?.count != null ? num(a.holders.count) : null,
+        top10: dist.top_10 != null ? num(dist.top_10) : null,
+        twitter: a.twitter_handle || null, telegram: a.telegram_handle || null,
+        discord: a.discord_url || null, websites: (a.websites || []).filter(Boolean)
+      }};
+    })
+    .catch(e => { t.info = {state:"err", ts:Date.now(), err:e.message}; })
+    .finally(scheduleRender);
+}
+let rugActive = 0; const rugQueue = [];
+function queueRug(t){
+  if(t.rug && (t.rug.state === "pending" || Date.now() - t.rug.ts < 30*60*1000)) return;
+  t.rug = {state:"pending", ts:Date.now()}; rugQueue.push(t); rugPump();
+}
+function rugPump(){
+  while(rugActive < 2 && rugQueue.length){
+    const t = rugQueue.shift(); rugActive++;
+    getJSON(RUG + t.mint + "/report")
+      .then(r => {
+        const pool = new Set(); const walk = (o, d) => { if(!o || d > 3) return; if(typeof o === "string"){ pool.add(o); return; } if(typeof o === "object") for(const v of Object.values(o)) walk(v, d+1); };
+        (r.markets || []).forEach(m => walk(m, 0)); Object.keys(r.lockers || {}).forEach(k => pool.add(k));
+        const hs = (r.topHolders || []).filter(h => !pool.has(h.address) && !pool.has(h.owner));
+        const pcts = hs.map(h => num(h.pct)).sort((a,b) => b-a);
+        t.rug = {state:"ok", ts:Date.now(), d:{
+          rugged: !!r.rugged,
+          mintAuth: r.mintAuthority ?? r.token?.mintAuthority ?? null,
+          freezeAuth: r.freezeAuthority ?? r.token?.freezeAuthority ?? null,
+          top10: pcts.slice(0,10).reduce((s,v) => s+v, 0),
+          whales: pcts.filter(p => p >= 1).length,
+          whalePct: pcts.filter(p => p >= 1).reduce((s,v) => s+v, 0),
+          insider: hs.filter(h => h.insider).reduce((s,h) => s+num(h.pct), 0),
+          holders: typeof r.totalHolders === "number" ? r.totalHolders : null,
+          danger: (r.risks || []).filter(x => (x.level||"").toLowerCase() === "danger").map(x => x.name)
+        }};
+      })
+      .catch(e => { t.rug = {state:"err", ts:Date.now(), err:e.message}; })
+      .finally(() => { rugActive--; setTimeout(rugPump, 400); scheduleRender(); });
+  }
+}
+
+/* ---------- 4) Bewerten ---------- */
+function marketGate(t){
+  const p = t.pair; if(!p) return "keine Marktdaten";
+  const mc = num(p.marketCap || p.fdv), liq = num(p.liquidity?.usd);
+  if(!p.pairCreatedAt || (Date.now() - p.pairCreatedAt) < num($("ageMin").value) * 864e5) return "zu jung";
+  if(liq < num($("liqMin").value)) return "Liquidität zu niedrig";
+  if(mc < num($("mcMin").value)) return "MCap zu klein";
+  if(mc > (num($("mcMax").value) || Infinity)) return "MCap zu groß";
+  return null;
+}
+function evaluate(t){
+  const o = t.ohlc.d, i = t.info?.state === "ok" ? t.info.d : {}, r = t.rug?.state === "ok" ? t.rug.d : null, p = t.pair;
+  const flags = [], out = [];
+  if(r){
+    if(r.rugged) out.push("als Rug markiert");
+    if($("needAuth").checked && (r.mintAuth || r.freezeAuth)) out.push("Mint/Freeze nicht abgegeben");
+    if(r.danger.length) flags.push([r.danger[0], "bad"]);
+  }
+  const holders = i.holders ?? r?.holders ?? null;
+  const top10 = i.top10 ?? r?.top10 ?? null;
+  if(holders !== null && holders < num($("holdersMin").value)) out.push("zu wenig Halter");
+  if(top10 !== null && top10 > num($("top10Max").value)) out.push("Top 10 halten zu viel");
+  if($("needWake").checked && o.wake < 1.3) out.push("Volumen schläft noch");
+
+  // Halter-Basis (25)
+  const sH = holders === null ? 0 : holders >= 2000 ? 25 : holders >= 1000 ? 20 : holders >= 500 ? 15 : holders >= 250 ? 8 : 0;
+  // Wale noch drin (15): sie halten, haben aber nicht alles
+  const sW = top10 === null ? 0 : top10 > 60 ? 0 : top10 >= 15 ? (top10 <= 40 ? 15 : 8) : 5;
+  // Volumen wacht auf (25)
+  const sV = o.wake >= 3 ? 25 : o.wake >= 2 ? 18 : o.wake >= 1.3 ? 10 : 0;
+  // Boden gebildet (15)
+  let sB = o.bounce >= 3 ? 9 : o.bounce >= 1.3 ? 11 : o.bounce >= 1.1 ? 5 : 0;
+  if(o.higherLow) sB += 4; sB = Math.min(sB, 15);
+  // Community & Socials (20)
+  const soc = new Set();
+  if(i.twitter) soc.add("x"); if(i.telegram) soc.add("tg"); if(i.discord) soc.add("dc"); if(i.websites?.length) soc.add("web");
+  for(const s of (p.info?.socials || [])) soc.add((s.type || s.platform || "").toLowerCase().replace("twitter","x").replace("telegram","tg"));
+  if((p.info?.websites || []).length) soc.add("web");
+  const cto = ctoSet.has(t.mint), promo = promoSet.has(t.mint);
+  const sC = Math.min(20, (cto ? 8 : 0) + (promo ? 6 : 0) + Math.min(6, soc.size * 2));
+  const total = sH + sW + sV + sB + sC;
+
+  if(cto) flags.push(["Community-Takeover", "good"]);
+  if(promo) flags.push(["Community wirbt gerade (DexScreener)", "good"]);
+  if(o.higherLow) flags.push(["höheres Tief als die Tage davor", "good"]);
+  if(o.bounce >= 3) flags.push([`schon ${o.bounce.toFixed(1)}× vom Tief – läuft bereits`, ""]);
+  if(r?.whales) flags.push([`${r.whales} Wallets ≥ 1 % halten zusammen ${r.whalePct.toFixed(0)} %`, r.whalePct > 40 ? "bad" : ""]);
+  if(r?.insider > 5) flags.push([`Insider ${r.insider.toFixed(0)} %`, "bad"]);
+  if(holders === null) flags.push(["Halterzahl unbekannt", ""]);
+  if(!soc.size) flags.push(["keine Socials", "bad"]);
+  return {out, total, holders, top10, parts:[["Halter",sH,25],["Wale",sW,15],["Volumen",sV,25],["Boden",sB,15],["Community",sC,20]], flags, soc, cto};
+}
+
+/* ---------- 5) Ablauf ---------- */
+function advance(){
+  for(const t of T.values()){
+    if(marketGate(t)) continue;
+    queueOhlc(t);
+    if(t.ohlc?.state !== "ok") continue;
+    const dd = t.ohlc.d.dd*100;
+    if(dd < num($("ddMin").value) || dd > num($("ddMax").value)) continue;
+    queueInfo(t); queueRug(t);
+  }
+}
+async function scan(){
+  if(scanning) return; scanning = true;
+  setStatus("sammle Kandidaten …", "busy");
+  try{
+    const r = await collect();
+    lastScan = Date.now();
+    setStatus(`${T.size} Coins im Blick · ${new Date().toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"})}` + (r.gtOk ? "" : " · GeckoTerminal nicht erreichbar"), r.gtOk ? "live" : "err");
+  }catch(e){ setStatus("Fehler: " + e.message, "err"); }
+  finally{ scanning = false; advance(); render(); }
+}
+function setStatus(t, s){ $("status").textContent = t; $("dot").className = "dot " + (s || ""); }
+let rp = false; function scheduleRender(){ if(rp) return; rp = true; setTimeout(() => { rp = false; advance(); render(); }, 500); }
+
+/* ---------- 6) Anzeige ---------- */
+function render(){
+  const rejected = {}; const bump = k => rejected[k] = (rejected[k] || 0) + 1;
+  const hits = []; let inChart = 0, chartDone = 0, deep = 0, waiting = 0;
+  for(const t of T.values()){
+    const g = marketGate(t); if(g){ bump(g); continue; }
+    inChart++;
+    if(t.ohlc?.state === "err"){ chartDone++; bump("Kursverlauf nicht abrufbar"); continue; }
+    if(t.ohlc?.state !== "ok") continue;
+    chartDone++;
+    const dd = t.ohlc.d.dd*100;
+    if(dd < num($("ddMin").value)){ bump("nicht tief genug gefallen"); continue; }
+    if(dd > num($("ddMax").value)){ bump("mehr als " + $("ddMax").value + " % gefallen (komplett tot)"); continue; }
+    deep++;
+    const done = t.info?.state && t.info.state !== "pending" && t.rug?.state && t.rug.state !== "pending";
+    if(!done){ waiting++; if($("onlyDone").checked) continue; }
+    const ev = evaluate(t);
+    if(ev.out.length){ bump(ev.out[0]); continue; }
+    if(ev.total < num($("scoreMin").value)){ bump("Score zu niedrig"); continue; }
+    hits.push({t, ev, done});
+  }
+  const S = { score:(a,b) => b.ev.total - a.ev.total, wake:(a,b) => b.t.ohlc.d.wake - a.t.ohlc.d.wake,
+    holders:(a,b) => num(b.ev.holders) - num(a.ev.holders), dd:(a,b) => b.t.ohlc.d.dd - a.t.ohlc.d.dd };
+  hits.sort(S[$("sort").value] || S.score);
+
+  const pct = inChart ? Math.round(chartDone / inChart * 100) : 0;
+  $("track").style.width = pct + "%";
+  $("prog").textContent = `${hits.length} Comeback-Kandidaten · ${deep} tief gefallen · Kursverlauf ${chartDone}/${inChart} geprüft` + (gtQueue.length ? ` · ${gtQueue.length} in Warteschlange` : "");
+
+  if(!hits.length){
+    $("list").innerHTML = `<div class="empty">${!T.size ? "Sammle Kandidaten …" : (gtQueue.length || waiting) ? "Prüfe Kursverläufe – das dauert ein paar Minuten, weil GeckoTerminal nur etwa 30 Abfragen pro Minute erlaubt." : "Gerade erfüllt kein Coin alle Regeln. Der Scanner sucht alle 10 Minuten neu – oder lockere oben z. B. den Score oder die Halterzahl."}</div>`;
+  } else {
+    const now = Date.now();
+    $("list").innerHTML = hits.slice(0, 60).map(({t, ev, done}) => {
+      const p = t.pair, o = t.ohlc.d, sym = p.baseToken?.symbol || "?", name = p.baseToken?.name || "";
+      const img = p.info?.imageUrl ? `<img src="${esc(p.info.imageUrl)}" alt="" loading="lazy" onerror="this.remove()">` : "";
+      const tw = t.info?.d?.twitter;
+      return `<article class="row">
+        <div class="score ${ev.total < 60 ? "mid" : ""}"><b>${ev.total}</b><small>Score</small></div>
+        <div class="logo">${img || esc(sym.slice(0,2))}</div>
+        <div class="name"><b>$${esc(sym)}</b><small>${esc(name)} · ${fmtAge(now - p.pairCreatedAt)} alt · Hoch vor ${fmtAge(o.athAgoH*3.6e6)}</small></div>
+        <div class="m"><div class="k">MCap jetzt · Hoch</div><div class="v">${fmtUsd(p.marketCap || p.fdv)} · ${fmtUsd(o.peakMc)}</div></div>
+        <div class="m"><div class="k">Vom Hoch</div><div class="v down">−${(o.dd*100).toFixed(1)} %</div></div>
+        <div class="m"><div class="k">Halter · Top 10</div><div class="v">${ev.holders === null ? "?" : fmtN(ev.holders)} · ${ev.top10 === null ? "?" : ev.top10.toFixed(0) + " %"}</div></div>
+        <div class="m"><div class="k">Vol 24h · vs. vorher</div><div class="v">${fmtUsd(o.vol24)} · <span class="${o.wake >= 1.3 ? "up" : ""}">${o.wake.toFixed(1)}×</span></div></div>
+        <div class="acts">
+          <button type="button" class="copy" data-ca="${esc(t.mint)}">CA kopieren</button>
+          <a href="${esc(p.url)}" target="_blank" rel="noopener">Chart</a>
+          <a href="https://x.com/search?q=${encodeURIComponent(t.mint)}&f=live" target="_blank" rel="noopener">X live</a>
+          ${tw ? `<a href="https://x.com/${esc(tw)}" target="_blank" rel="noopener">@${esc(tw)}</a>` : ""}
+          <a href="https://rugcheck.xyz/tokens/${esc(t.mint)}" target="_blank" rel="noopener">RugCheck</a>
+        </div>
+        <div class="parts">${ev.parts.map(([l,v,m]) => `<div class="part"><span>${l} ${v}/${m}</span><div class="pb"><i style="width:${(v/m*100).toFixed(0)}%"></i></div></div>`).join("")}</div>
+        <div class="chips">${!done ? `<span class="chip">Halter/Sicherheit werden geprüft</span>` : ""}${ev.flags.map(([f,c]) => `<span class="chip ${c}">${esc(f)}</span>`).join("")}</div>
+      </article>`;
+    }).join("");
+  }
+  const rej = Object.entries(rejected).sort((a,b) => b[1]-a[1]).slice(0, 8);
+  $("rejects").innerHTML = rej.length ? `Aussortiert:<ul>${rej.map(([k,v]) => `<li>${esc(k)}: ${v}</li>`).join("")}</ul>` : "";
+}
+
+function toast(m){ const d = document.createElement("div"); d.className = "toast"; d.textContent = m; document.body.appendChild(d); setTimeout(() => d.remove(), 1800); }
+$("list").addEventListener("click", e => {
+  const b = e.target.closest("button[data-ca]"); if(!b) return;
+  const ca = b.dataset.ca;
+  const fb = () => { const ta = document.createElement("textarea"); ta.value = ca; document.body.appendChild(ta); ta.select(); try{ document.execCommand("copy"); toast("Adresse kopiert"); }catch(_){ toast(ca); } ta.remove(); };
+  if(navigator.clipboard?.writeText) navigator.clipboard.writeText(ca).then(() => toast("Adresse kopiert – in Fomo einfügen"), fb); else fb();
+});
+document.addEventListener("input", e => { if(PREF_IDS.includes(e.target.id)){ savePrefs(); advance(); render(); } });
+document.addEventListener("change", e => { if(PREF_IDS.includes(e.target.id)){ savePrefs(); advance(); render(); } });
+$("refresh").addEventListener("click", scan);
+
+loadPrefs(); scan();
+setInterval(() => { if(Date.now() - lastScan > 10*60*1000) scan(); }, 30000);
+</script>
+</body>
+</html>
